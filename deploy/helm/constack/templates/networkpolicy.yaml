@@ -1,0 +1,74 @@
+{{- if and .Values.ai.enabled .Values.networkPolicy.enabled (not .Values.ai.networkPolicy.additionalEgress) }}
+{{- fail "ai.networkPolicy.additionalEgress is required when ai.enabled=true and networkPolicy.enabled=true" }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "constack.fullname" . }}-application-ingress
+  labels: {{- include "constack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [web, api] }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/component: gateway } }
+      ports: [{ protocol: TCP, port: 3000 }, { protocol: TCP, port: 3001 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "constack.fullname" . }}-datastore-ingress
+  labels: {{- include "constack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [mysql, redis] }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/component, operator: In, values: [api, discovery, analysis, actions, migration] }
+      ports: [{ protocol: TCP, port: 3306 }, { protocol: TCP, port: 6379 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "constack.fullname" . }}-workers-no-ingress
+  labels: {{- include "constack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [discovery, analysis, actions, migration] }
+  policyTypes: ["Ingress"]
+  ingress: []
+{{- end }}
+{{- if .Values.ai.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "constack.fullname" . }}-analysis-egress
+  labels: {{- include "constack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "constack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: analysis
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/component, operator: In, values: [mysql, redis] }
+      ports: [{ protocol: TCP, port: 3306 }, { protocol: TCP, port: 6379 }]
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    {{- with .Values.ai.networkPolicy.additionalEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

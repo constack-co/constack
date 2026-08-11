@@ -1,0 +1,87 @@
+name: Release images and chart
+on:
+  push:
+    tags: ['v*']
+permissions:
+  actions: read
+  contents: write
+  packages: write
+  id-token: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: services
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.services
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/constack-co/constack-services:${{ github.ref_name }}
+      - id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.web
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/constack-co/constack-web:${{ github.ref_name }}
+      - name: Scan services release image
+        uses: anchore/scan-action@v7.4.0
+        with:
+          image: ghcr.io/constack-co/constack-services@${{ steps.services.outputs.digest }}
+          severity-cutoff: high
+          only-fixed: true
+          fail-build: true
+      - name: Scan web release image
+        uses: anchore/scan-action@v7.4.0
+        with:
+          image: ghcr.io/constack-co/constack-web@${{ steps.web.outputs.digest }}
+          severity-cutoff: high
+          only-fixed: true
+          fail-build: true
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign immutable image digests
+        run: |
+          cosign sign --yes ghcr.io/constack-co/constack-services@${{ steps.services.outputs.digest }}
+          cosign sign --yes ghcr.io/constack-co/constack-web@${{ steps.web.outputs.digest }}
+      - run: mkdir -p dist
+      - name: Generate services SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ghcr.io/constack-co/constack-services@${{ steps.services.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: dist/constack-services.spdx.json
+          artifact-name: constack-services.spdx.json
+      - name: Generate web SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ghcr.io/constack-co/constack-web@${{ steps.web.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: dist/constack-web.spdx.json
+          artifact-name: constack-web.spdx.json
+      - uses: azure/setup-helm@v4
+        with: { version: v4.2.0 }
+      - run: helm package deploy/helm/constack --destination dist
+      - name: Publish Helm chart to GHCR OCI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          helm push dist/constack-*.tgz oci://ghcr.io/constack-co/charts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tgz
+            dist/*.spdx.json
+          generate_release_notes: true

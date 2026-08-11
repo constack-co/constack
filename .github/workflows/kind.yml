@@ -1,0 +1,49 @@
+name: Kubernetes compatibility
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 2'
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    strategy:
+      fail-fast: false
+      matrix:
+        kubernetes: ['v1.34.1', 'v1.35.0', 'v1.36.0']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          {
+            version: v0.30.0,
+            node_image: 'kindest/node:${{ matrix.kubernetes }}',
+            cluster_name: constack-test,
+          }
+      - uses: azure/setup-helm@v4
+        with: { version: v4.2.0 }
+      - uses: docker/setup-buildx-action@v3
+      - run: docker build -f deploy/docker/Dockerfile.services -t constack-services:test .
+      - run: docker build -f deploy/docker/Dockerfile.web -t constack-web:test .
+      - run: kind load docker-image --name constack-test constack-services:test constack-web:test
+      - run: kubectl create deployment fixture --image=nginx:1.29-alpine
+      - run: >-
+          helm install constack deploy/helm/constack --namespace constack --create-namespace
+          --set images.services.repository=constack-services
+          --set images.services.tag=test
+          --set images.services.pullPolicy=Never
+          --set images.web.repository=constack-web
+          --set images.web.tag=test
+          --set images.web.pullPolicy=Never
+          --set bootstrap.adminPassword=constack-kind-test-password
+          --wait --timeout 12m
+      - run: kubectl get pods -n constack
+      - run: test "$(kubectl get deploy -n constack -l app.kubernetes.io/component=actions --no-headers 2>/dev/null | wc -l)" = "0"
+      - run: test "$(kubectl get deploy -n constack -l app.kubernetes.io/component=analysis --no-headers 2>/dev/null | wc -l)" = "0"
+      - run: kubectl port-forward service/constack 3000:80 -n constack > /tmp/port-forward.log 2>&1 &
+      - run: for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/login && exit 0; sleep 2; done; cat /tmp/port-forward.log; exit 1
+      - run: helm uninstall constack -n constack
+      - run: kubectl rollout status deployment/fixture --timeout=60s

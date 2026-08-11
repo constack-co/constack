@@ -1,0 +1,32 @@
+{
+  "name": "constack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kubernetes observability and real-time 3D infrastructure digital twin",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint && eslint .",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format:check": "prettier --check .",
+    "helm:lint": "helm lint deploy/helm/constack",
+    "helm:render": "helm template constack deploy/helm/constack --namespace constack",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@types/node": "24.10.1",
+    "eslint": "9.39.1",
+    "prettier": "3.8.2",
+    "turbo": "2.10.5",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.56.1",
+    "vitest": "4.1.0"
+  }
+}

@@ -1,0 +1,60 @@
+{{- if not .Values.existingSecret }}
+{{- $name := printf "%s-config" (include "constack.fullname" .) -}}
+{{- $old := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- $mysqlPassword := randAlphaNum 32 -}}
+{{- $mysqlRootPassword := randAlphaNum 40 -}}
+{{- $sessionSecret := randAlphaNum 64 -}}
+{{- $adminPassword := default (randAlphaNum 24) .Values.bootstrap.adminPassword -}}
+{{- if $old }}
+{{- $mysqlPassword = (index $old.data "MYSQL_PASSWORD" | b64dec) -}}
+{{- $mysqlRootPassword = (index $old.data "MYSQL_ROOT_PASSWORD" | b64dec) -}}
+{{- $sessionSecret = (index $old.data "SESSION_SECRET" | b64dec) -}}
+{{- if not .Values.bootstrap.adminPassword }}{{- $adminPassword = (index $old.data "BOOTSTRAP_ADMIN_PASSWORD" | b64dec) -}}{{- end -}}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels: {{- include "constack.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  MYSQL_PASSWORD: {{ $mysqlPassword | quote }}
+  MYSQL_ROOT_PASSWORD: {{ $mysqlRootPassword | quote }}
+  SESSION_SECRET: {{ $sessionSecret | quote }}
+  BOOTSTRAP_ADMIN_PASSWORD: {{ $adminPassword | quote }}
+  DATABASE_URL: {{ if .Values.mysql.enabled }}{{ printf "mysql://constack:%s@%s-mysql:3306/constack" $mysqlPassword (include "constack.fullname" .) | quote }}{{ else }}{{ required "mysql.externalUrl is required when mysql.enabled=false" .Values.mysql.externalUrl | quote }}{{ end }}
+  REDIS_URL: {{ if .Values.redis.enabled }}{{ printf "redis://%s-redis:6379" (include "constack.fullname" .) | quote }}{{ else }}{{ required "redis.externalUrl is required when redis.enabled=false" .Values.redis.externalUrl | quote }}{{ end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "constack.fullname" . }}-runtime
+  labels: {{- include "constack.labels" . | nindent 4 }}
+data:
+  NODE_ENV: production
+  PORT: "3001"
+  CLUSTER_ID: {{ .Values.clusterId | quote }}
+  BOOTSTRAP_ORGANIZATION: {{ .Values.bootstrap.organization | quote }}
+  BOOTSTRAP_ADMIN_EMAIL: {{ .Values.bootstrap.adminEmail | quote }}
+  ACTIONS_ENABLED: {{ .Values.actions.enabled | quote }}
+  AI_ENABLED: {{ .Values.ai.enabled | quote }}
+  SECRET_METADATA_DISCOVERY_ENABLED: {{ .Values.discovery.secretMetadata.enabled | quote }}
+  METRICS_ENABLED: {{ .Values.metrics.enabled | quote }}
+  DEMO_MODE: "false"
+  RESOURCE_HISTORY_RETENTION_DAYS: {{ .Values.retention.resourceHistoryDays | quote }}
+  INCIDENT_RECOMMENDATION_RETENTION_DAYS: {{ .Values.retention.incidentRecommendationDays | quote }}
+  AUDIT_RETENTION_DAYS: {{ .Values.retention.auditDays | quote }}
+  ACTION_SERVICE_ACCOUNT: {{ printf "%s-actions" (include "constack.fullname" .) | quote }}
+  {{- if .Values.oidc.enabled }}
+  OIDC_ISSUER_URL: {{ required "oidc.issuerUrl is required" .Values.oidc.issuerUrl | quote }}
+  OIDC_CLIENT_ID: {{ required "oidc.clientId is required" .Values.oidc.clientId | quote }}
+  OIDC_REDIRECT_URL: {{ required "oidc.redirectUrl is required" .Values.oidc.redirectUrl | quote }}
+  OIDC_ALLOWED_DOMAINS: {{ .Values.oidc.allowedDomains | quote }}
+  {{- end }}
+  {{- if .Values.ai.enabled }}
+  EXTERNAL_ANALYSIS_URL: {{ required "ai.endpoint is required when ai.enabled=true" .Values.ai.endpoint | quote }}
+  EXTERNAL_ANALYSIS_TIMEOUT_MS: {{ .Values.ai.timeoutMs | quote }}
+  EXTERNAL_ANALYSIS_ALLOW_EVENTS: {{ .Values.ai.context.events | quote }}
+  EXTERNAL_ANALYSIS_ALLOW_METRICS: {{ .Values.ai.context.metrics | quote }}
+  {{- end }}

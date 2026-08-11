@@ -1,0 +1,27 @@
+{
+  "name": "@constack/action-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@constack/config": "workspace:*",
+    "@constack/shared-types": "workspace:*",
+    "@kubernetes/client-node": "1.4.0",
+    "bullmq": "5.80.10",
+    "ioredis": "5.11.1",
+    "mysql2": "3.23.1"
+  },
+  "devDependencies": {
+    "tsx": "4.21.0",
+    "typescript": "6.0.2",
+    "vitest": "4.1.0"
+  }
+}

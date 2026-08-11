@@ -1,0 +1,13 @@
+ConStack has been installed in namespace {{ .Release.Namespace }}.
+
+Read-only access through port-forward:
+  kubectl port-forward service/{{ include "constack.fullname" . }} 3000:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+
+Open http://localhost:3000 and sign in as {{ .Values.bootstrap.adminEmail }}.
+{{- if not .Values.bootstrap.adminPassword }}
+Retrieve the generated bootstrap password:
+  kubectl get secret {{ include "constack.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d
+{{- end }}
+
+Operational actions: {{ ternary "ENABLED (write RBAC installed)" "disabled" .Values.actions.enabled }}
+External analysis: {{ ternary "ENABLED (recommendation-only)" "disabled" .Values.ai.enabled }}

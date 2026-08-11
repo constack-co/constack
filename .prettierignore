@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+coverage
+pnpm-lock.yaml
+deploy/kubernetes/constack.yaml
+deploy/helm/constack/templates
+apps/web/next-env.d.ts

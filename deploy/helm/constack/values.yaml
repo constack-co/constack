@@ -1,0 +1,87 @@
+global:
+  imagePullSecrets: []
+  storageClass: ''
+
+images:
+  services:
+    repository: ghcr.io/constack-co/constack-services
+    tag: 'v0.1.0'
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/constack-co/constack-web
+    tag: 'v0.1.0'
+    pullPolicy: IfNotPresent
+  gateway:
+    repository: nginx
+    tag: 1.29-alpine
+    pullPolicy: IfNotPresent
+
+clusterId: in-cluster
+existingSecret: ''
+bootstrap:
+  organization: ConStack
+  adminEmail: admin@constack.local
+  adminPassword: ''
+
+actions:
+  enabled: false
+ai:
+  enabled: false
+  endpoint: ''
+  existingSecret: ''
+  authHeaderKey: auth-header
+  timeoutMs: 20000
+  context:
+    events: false
+    metrics: false
+  networkPolicy:
+    additionalEgress: []
+discovery:
+  secretMetadata:
+    enabled: false
+metrics:
+  enabled: true
+retention:
+  resourceHistoryDays: 7
+  incidentRecommendationDays: 90
+  auditDays: 365
+
+oidc:
+  enabled: false
+  issuerUrl: ''
+  clientId: ''
+  redirectUrl: ''
+  allowedDomains: ''
+  existingSecret: ''
+  clientSecretKey: client-secret
+
+service:
+  type: ClusterIP
+  port: 80
+  nodePort: null
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  host: constack.example.com
+  tls: []
+networkPolicy:
+  enabled: true
+
+mysql:
+  enabled: true
+  image: mysql:8.4
+  storage: 10Gi
+  externalUrl: ''
+redis:
+  enabled: true
+  image: redis:8-alpine
+  storage: 2Gi
+  externalUrl: ''
+
+resources:
+  gateway: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 250m, memory: 128Mi } }
+  web: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: '1', memory: 512Mi } }
+  api: { requests: { cpu: 150m, memory: 256Mi }, limits: { cpu: '2', memory: 1Gi } }
+  discovery: { requests: { cpu: 200m, memory: 384Mi }, limits: { cpu: '2', memory: 2Gi } }
+  worker: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: '1', memory: 768Mi } }

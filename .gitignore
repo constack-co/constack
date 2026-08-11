@@ -1,0 +1,16 @@
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+apps/web/public/draco/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+!.env.example
+*.log
+tmp/
+.DS_Store
+deploy/helm/constack/charts/
+.tmp-kind-import/

@@ -1,0 +1,92 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.15.1, run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - uses: azure/setup-helm@v4
+        with: { version: v4.2.0 }
+      - run: helm lint deploy/helm/constack
+      - run: mkdir -p build-validation
+      - run: helm template constack deploy/helm/constack --namespace constack > build-validation/constack.yaml
+      - run: >-
+          helm template constack deploy/helm/constack --namespace constack
+          --set actions.enabled=true
+          --set ai.enabled=true
+          --set ai.endpoint=https://analysis.example.test/v1/recommend
+          --set-json 'ai.networkPolicy.additionalEgress=[{"to":[{"ipBlock":{"cidr":"203.0.113.10/32"}}],"ports":[{"protocol":"TCP","port":443}]}]'
+          > build-validation/constack-enabled.yaml
+      - name: Validate Kubernetes resources with Kubeconform
+        run: >-
+          docker run --rm -v "${{ github.workspace }}:/work"
+          ghcr.io/yannh/kubeconform:v0.7.0
+          -strict -summary -kubernetes-version 1.34.0
+          /work/build-validation/constack.yaml
+          /work/build-validation/constack-enabled.yaml
+
+  containers:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          {
+            context: .,
+            file: deploy/docker/Dockerfile.services,
+            push: false,
+            load: true,
+            tags: constack-services:test,
+          }
+      - uses: docker/build-push-action@v6
+        with:
+          {
+            context: .,
+            file: deploy/docker/Dockerfile.web,
+            push: false,
+            load: true,
+            tags: constack-web:test,
+          }
+      - name: Scan services image
+        uses: anchore/scan-action@v7.4.0
+        with:
+          {
+            image: constack-services:test,
+            severity-cutoff: high,
+            only-fixed: true,
+            fail-build: true,
+          }
+      - name: Scan web image
+        uses: anchore/scan-action@v7.4.0
+        with:
+          { image: constack-web:test, severity-cutoff: high, only-fixed: true, fail-build: true }
+      - name: Generate services SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          {
+            image: constack-services:test,
+            format: spdx-json,
+            artifact-name: constack-services.spdx.json,
+          }
+      - name: Generate web SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with: { image: constack-web:test, format: spdx-json, artifact-name: constack-web.spdx.json }

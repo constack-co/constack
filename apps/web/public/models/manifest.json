@@ -1,0 +1,10 @@
+{
+  "models": [
+    "/models/deploy-3d.glb",
+    "/models/pod-3d.glb",
+    "/models/redis-3d.glb",
+    "/models/replicaset-3d.glb",
+    "/models/service-3d.glb"
+  ],
+  "note": "Generated automatically from GLB files in apps/web/public/models."
+}

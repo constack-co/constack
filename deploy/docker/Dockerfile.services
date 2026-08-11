@@ -1,0 +1,38 @@
+FROM node:24-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
+WORKDIR /workspace
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @constack/api... --filter @constack/discovery-worker... --filter @constack/analysis-worker... --filter @constack/action-worker... build
+# Keep development/build tooling out of the runtime image. This removes the
+# vulnerable Go/npm tooling that Grype would otherwise scan in node_modules.
+RUN CI=true pnpm prune --prod
+# Do not carry any workspace node_modules (including unrelated web tooling)
+# into the runtime stage; install only the selected services there.
+RUN find /workspace -type d -name node_modules -prune -exec rm -rf {} +
+
+FROM node:24-bookworm-slim AS runtime
+ENV NODE_ENV=production
+RUN groupadd --system --gid 10001 constack && useradd --system --uid 10001 --gid constack --home-dir /workspace constack
+WORKDIR /workspace
+# Copy only manifests and compiled packages, then create a fresh production
+# dependency tree. Copying the build workspace would retain pnpm's virtual
+# store, including development tools and their embedded Go binaries.
+COPY --from=build /workspace/package.json /workspace/pnpm-lock.yaml /workspace/pnpm-workspace.yaml ./
+COPY --from=build /workspace/apps ./apps
+COPY --from=build /workspace/packages ./packages
+RUN find /workspace -type d -name node_modules -prune -exec rm -rf {} +
+RUN corepack enable && corepack prepare pnpm@11.15.1 --activate \
+  && CI=true pnpm install --prod --frozen-lockfile --ignore-scripts \
+    --filter @constack/api... \
+    --filter @constack/discovery-worker... \
+    --filter @constack/analysis-worker... \
+    --filter @constack/action-worker...
+# npm/corepack are build-time tooling only; removing them avoids shipping their
+# independent dependency tree in the production image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+RUN chown -R constack:constack /workspace
+USER 10001
+CMD ["node", "apps/api/dist/main.js"]
